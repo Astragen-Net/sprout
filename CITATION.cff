@@ -5,8 +5,9 @@ type: software
 authors:
   - family-names: Jaguste
     given-names: Rahul
+  - name: "Astragen Ltd"
 license: MIT
-repository-code: "https://github.com/rahuljaguste/sprout"
+repository-code: "https://github.com/Astragen-Net/sprout"
 version: 0.1.1
 date-released: 2026-11-17
 abstract: >-

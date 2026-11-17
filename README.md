@@ -119,4 +119,4 @@ This evaluates launch-time and creator/dev features against 5/15/30/60-second du
 
 ## License
 
-MIT. Copyright (c) 2026 Rahul Jaguste. See [LICENSE](LICENSE).
+MIT. Copyright (c) 2026 Astragen Ltd. See [LICENSE](LICENSE).
