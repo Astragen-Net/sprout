@@ -222,7 +222,7 @@ def add_outcomes(features, trades, migrations):
         features[f"price_{label}"] = last
         features[f"min_price_{label}"] = minimum
         features[f"max_price_{label}"] = maximum
-        features[f"dead_{label}"] = minimum.isna()
+        features[f"dead_{label}"] = minimum.reindex(features.index).isna()
         features[f"censored_{label}"] = features["launch_time"] + seconds > capture_max_time
 
         valid = features["price_60s"].notna() & minimum.reindex(features.index).notna()
@@ -301,14 +301,15 @@ def main() -> int:
         print(f"  stats restricted to launch_time < {args.stats_until} ({len(stats_frame):,} launches)")
     print(f"  with early trades: {int((stats_frame['early_trades'].fillna(0) > 0).sum()):,}")
     for label in HORIZONS:
-        eligible = stats_frame[
+        cohort = stats_frame[
             (~stats_frame[f"censored_{label}"].fillna(True))
             & stats_frame["price_60s"].notna()
             & (stats_frame["early_trades"].fillna(0) > 0)
-            & stats_frame[f"rug_{label}"].notna()
         ]
+        dead = int(cohort[f"dead_{label}"].fillna(False).sum())
+        eligible = cohort[cohort[f"rug_{label}"].notna()]
         print(
-            f"  {label}: eligible={len(eligible):,} "
+            f"  {label}: eligible={len(eligible):,} dead={dead:,} "
             f"rug_rate={eligible[f'rug_{label}'].mean():.2%} "
             f"flagged={int((eligible['bundle_score'] > 0).sum()):,}"
         )

@@ -15,6 +15,10 @@ Do pumpfun launch-time signals computed at T+60s separate launches that rug from
 
 ## Time definition
 
+> **Superseded by Amendment 2.** The slot-based windows below were replaced by
+> chain-time windows (`launch block_time + 60 s`, etc.). The original text is
+> retained for the record; see the amendment at the bottom of this document.
+
 - T+60s is **slot-based**: `launch_slot + 150` slots (~60 s at 400 ms/slot). Wall-clock ingest time is never used for features or outcomes.
 - Horizons: 1 h = `+9,000` slots, 6 h = `+54,000`, 24 h = `+216,000`.
 - Block times come from the captured `blocks_meta` feed; if a slot is missing, the update `created_at` is used only for display, not for window boundaries.

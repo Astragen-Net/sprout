@@ -47,8 +47,7 @@ static BUY_EXACT_QUOTE_V2: LazyLock<[u8; 8]> =
     LazyLock::new(|| discriminator("buy_exact_quote_in_v2"));
 static BUY_EXACT_QUOTE_V3: LazyLock<[u8; 8]> =
     LazyLock::new(|| discriminator("buy_exact_quote_in_v3"));
-static BUY_EXACT_SOL_IN: LazyLock<[u8; 8]> =
-    LazyLock::new(|| discriminator("buy_exact_sol_in"));
+static BUY_EXACT_SOL_IN: LazyLock<[u8; 8]> = LazyLock::new(|| discriminator("buy_exact_sol_in"));
 
 /// Anchor event CPI envelope used by pumpfun; not an instruction.
 const EVENT_TAG: [u8; 8] = [0xe4, 0x45, 0xa5, 0x2e, 0x51, 0xcb, 0x9a, 0x1d];
@@ -136,6 +135,7 @@ struct Stats {
     err_sol: u64,
     err_base: u64,
     err_quote: u64,
+    zero_delta: u64,
     failure_samples: Vec<String>,
     event_cpis: u64,
     ignored: u64,
@@ -213,12 +213,14 @@ async fn main() -> Result<()> {
     CryptoProvider::install_default(aws_lc_rs::default_provider()).ok();
 
     let url = env::var("GRPC_URL").context("GRPC_URL is required")?;
-    let token = env::var("GRPC_TOKEN").ok().filter(|value| !value.is_empty());
+    let token = env::var("GRPC_TOKEN")
+        .ok()
+        .filter(|value| !value.is_empty());
     let minutes: u64 = env::var("CAPTURE_MINUTES")
         .ok()
         .and_then(|value| value.parse().ok())
         .unwrap_or(60);
-    let out = env::var("CAPTURE_OUT").unwrap_or_else(|_| "../data/raw".to_string());
+    let out = env::var("CAPTURE_OUT").unwrap_or_else(|_| "../data/raw/live".to_string());
 
     let deadline = if minutes == 0 {
         None
@@ -235,16 +237,17 @@ async fn main() -> Result<()> {
             Ok(false) => eprintln!("stream ended; reconnecting"),
             Err(error) => eprintln!("session error: {error:#}; reconnecting"),
         }
-        if let Some(deadline) = deadline {
-            if Instant::now() >= deadline {
-                break;
-            }
+        if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+            break;
         }
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
     writer.finish()?;
-    eprintln!("capture finished: {} lines, {} raw bytes", writer.lines, writer.raw_bytes);
+    eprintln!(
+        "capture finished: {} lines, {} raw bytes",
+        writer.lines, writer.raw_bytes
+    );
     Ok(())
 }
 
@@ -276,10 +279,7 @@ async fn run_session(
                 account_required: vec![],
             },
         )]),
-        blocks_meta: HashMap::from([(
-            "blocks".to_string(),
-            SubscribeRequestFilterBlocksMeta {},
-        )]),
+        blocks_meta: HashMap::from([("blocks".to_string(), SubscribeRequestFilterBlocksMeta {})]),
         commitment: Some(COMMITMENT_CONFIRMED),
         from_slot: (*last_slot > 8).then_some(*last_slot - 8),
         ..Default::default()
@@ -292,12 +292,10 @@ async fn run_session(
     loop {
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_millis(250)) => {
-                if let Some(deadline) = deadline {
-                    if Instant::now() >= deadline {
-                        writer.flush()?;
-                        log_stats(&stats, writer);
-                        return Ok(true);
-                    }
+                if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                    writer.flush()?;
+                    log_stats(&stats, writer);
+                    return Ok(true);
                 }
                 writer.flush()?;
                 if last_log.elapsed() >= Duration::from_secs(10) {
@@ -336,7 +334,7 @@ fn log_stats(stats: &Stats, writer: &Writer) {
         .join(",");
 
     eprintln!(
-        "txs={} launches={} trades={} migrations={} blocks={} decode_errors={} (create_args={} missing={} sol={} base={} quote={}) event_cpis={} ignored={} lines={} raw_mb={:.1} disc=[{discriminators}] programs=[{programs}]",
+        "txs={} launches={} trades={} migrations={} blocks={} decode_errors={} (create_args={} missing={} sol={} base={} quote={}) zero_delta={} event_cpis={} ignored={} lines={} raw_mb={:.1} disc=[{discriminators}] programs=[{programs}]",
         stats.txs,
         stats.launches,
         stats.trades,
@@ -348,6 +346,7 @@ fn log_stats(stats: &Stats, writer: &Writer) {
         stats.err_sol,
         stats.err_base,
         stats.err_quote,
+        stats.zero_delta,
         stats.event_cpis,
         stats.ignored,
         writer.lines,
@@ -458,7 +457,7 @@ fn handle_transaction(
 
     for inner in &meta.inner_instructions {
         for (inner_index, instruction) in inner.instructions.iter().enumerate() {
-            let ix_path = ((inner.index as u32) << 16) | ((inner_index as u32) + 1);
+            let ix_path = (inner.index << 16) | ((inner_index as u32) + 1);
             decode_instruction(
                 instruction.program_id_index as usize,
                 &instruction.accounts,
@@ -502,10 +501,7 @@ fn decode_instruction(
     let Some(program) = keys.get(program_index) else {
         return Ok(());
     };
-    *stats
-        .programs
-        .entry(to_base58(program))
-        .or_insert(0) += 1;
+    *stats.programs.entry(to_base58(program)).or_insert(0) += 1;
     if program.as_slice() != pumpfun_program {
         return Ok(());
     }
@@ -563,9 +559,17 @@ fn decode_instruction(
     }
 
     if discriminator == *BUY || discriminator == *SELL || discriminator == *BUY_EXACT_SOL_IN {
-        let side = if discriminator == *SELL { "sell" } else { "buy" };
-        let (Some(mint), Some(curve), Some(curve_ata), Some(wallet), Some(curve_index)) =
-            (key(2), key(3), account(4), key(6), account(3))
+        let side = if discriminator == *SELL {
+            "sell"
+        } else {
+            "buy"
+        };
+        // Base amount comes from the user's associated token account, not the
+        // curve vault. The curve vault is created and funded in the same
+        // transaction as the first buy, so its transaction-level post balance
+        // is the remaining supply, not the amount bought.
+        let (Some(mint), Some(curve), Some(user_ata), Some(wallet), Some(curve_index)) =
+            (key(2), key(3), account(5), key(6), account(3))
         else {
             stats.decode_errors += 1;
             return Ok(());
@@ -576,17 +580,17 @@ fn decode_instruction(
             return Ok(());
         };
         let Some((pre_base, post_base, base_decimals)) =
-            token_pair(meta, curve_ata as usize, &mint, &curve)
+            token_pair(meta, user_ata as usize, &mint, &wallet)
         else {
             stats.decode_errors += 1;
             stats.err_base += 1;
             if stats.failure_samples.len() < 6 {
                 stats.failure_samples.push(format!(
-                    "native_base disc={} vault={} mint={} curve={} pre={:?} post={:?}",
+                    "native_base disc={} user_ata={} mint={} wallet={} pre={:?} post={:?}",
                     hex(&discriminator),
-                    curve_ata,
+                    user_ata,
                     mint,
-                    curve,
+                    wallet,
                     meta.pre_token_balances
                         .iter()
                         .map(|balance| balance.account_index)
@@ -602,6 +606,7 @@ fn decode_instruction(
         let quote_raw = pre_sol.abs_diff(post_sol);
         let base_raw = pre_base.abs_diff(post_base);
         if quote_raw == 0 || base_raw == 0 {
+            stats.zero_delta += 1;
             return Ok(());
         }
         writer.write(&Event::Trade {
@@ -634,7 +639,7 @@ fn decode_instruction(
             1usize,
             2usize,
             10usize,
-            11usize,
+            14usize,
             12usize,
             13usize,
             discriminator == *SELL_V2,
@@ -643,7 +648,7 @@ fn decode_instruction(
         || discriminator == *SELL_V3
         || discriminator == *BUY_EXACT_QUOTE_V3
     {
-        Some((1, 2, 5, 6, 7, 8, discriminator == *SELL_V3))
+        Some((1, 2, 5, 9, 7, 8, discriminator == *SELL_V3))
     } else {
         None
     };
@@ -652,7 +657,7 @@ fn decode_instruction(
         base_mint_pos,
         quote_mint_pos,
         curve_pos,
-        base_vault_pos,
+        base_user_pos,
         quote_vault_pos,
         user_pos,
         is_sell,
@@ -664,32 +669,34 @@ fn decode_instruction(
             Some(quote_mint),
             Some(curve),
             Some(wallet),
-            Some(base_vault),
+            Some(base_user),
             Some(quote_vault),
         ) = (
             key(base_mint_pos),
             key(quote_mint_pos),
             key(curve_pos),
             key(user_pos),
-            account(base_vault_pos),
+            account(base_user_pos),
             account(quote_vault_pos),
         )
         else {
             stats.decode_errors += 1;
             return Ok(());
         };
+        // See the native branch: use the user's base token account so a
+        // create+buy first fill is measured by what the user received.
         let Some((pre_base, post_base, base_decimals)) =
-            token_pair(meta, base_vault as usize, &base_mint, &curve)
+            token_pair(meta, base_user as usize, &base_mint, &wallet)
         else {
             stats.decode_errors += 1;
             stats.err_base += 1;
             if stats.failure_samples.len() < 6 {
                 stats.failure_samples.push(format!(
-                    "quote_base disc={} vault={} mint={} curve={} pre={:?} post={:?}",
+                    "quote_base disc={} user_ata={} mint={} wallet={} pre={:?} post={:?}",
                     hex(&discriminator),
-                    base_vault,
+                    base_user,
                     base_mint,
-                    curve,
+                    wallet,
                     meta.pre_token_balances
                         .iter()
                         .map(|balance| balance.account_index)
@@ -739,6 +746,7 @@ fn decode_instruction(
             return Ok(());
         };
         if base_raw == 0 || quote_raw == 0 {
+            stats.zero_delta += 1;
             return Ok(());
         }
         writer.write(&Event::Trade {
@@ -769,14 +777,7 @@ fn decode_instruction(
             return Ok(());
         };
         write_migration(
-            mint,
-            pool,
-            slot,
-            tx_index,
-            ix_path,
-            signature,
-            created_at,
-            writer,
+            mint, pool, slot, tx_index, ix_path, signature, created_at, writer,
         )?;
         stats.migrations += 1;
         return Ok(());
@@ -802,10 +803,14 @@ fn decode_instruction(
     }
 
     stats.ignored += 1;
+    if stats.unknown_samples.len() < 6 {
+        stats.unknown_samples.push(hex(&discriminator));
+    }
 
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn write_migration(
     mint: String,
     pool: String,
@@ -904,3 +909,67 @@ fn token_pair(
 // Keep the Message import used even if the proto changes shape.
 #[allow(dead_code)]
 fn _message_type(_: &Message) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use yellowstone_grpc_proto::prelude::{TokenBalance, UiTokenAmount};
+
+    fn balance(
+        account_index: u32,
+        mint: &str,
+        owner: &str,
+        amount: &str,
+        decimals: u32,
+    ) -> TokenBalance {
+        TokenBalance {
+            account_index,
+            mint: mint.to_string(),
+            ui_token_amount: Some(UiTokenAmount {
+                decimals,
+                amount: amount.to_string(),
+                ..Default::default()
+            }),
+            owner: owner.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn discriminator_matches_public_idl() {
+        assert_eq!(hex(&discriminator("buy")), "66063d1201daebea");
+        assert_eq!(discriminator("create_v2"), *CREATE_V2);
+    }
+
+    #[test]
+    fn first_buy_reads_the_user_balance_not_the_curve_remainder() {
+        let meta = TransactionStatusMeta {
+            post_token_balances: vec![
+                balance(4, "mint", "curve", "999964676", 6),
+                balance(5, "mint", "wallet", "35324", 6),
+            ],
+            ..Default::default()
+        };
+        // The curve vault is created and funded in the create transaction;
+        // its post balance is the remaining supply.
+        assert_eq!(
+            token_pair(&meta, 4, "mint", "curve"),
+            Some((0, 999_964_676, 6))
+        );
+        // The user's post balance is what was actually bought.
+        assert_eq!(token_pair(&meta, 5, "mint", "wallet"), Some((0, 35_324, 6)));
+    }
+
+    #[test]
+    fn token_pair_returns_none_for_an_absent_account() {
+        let meta = TransactionStatusMeta::default();
+        assert_eq!(token_pair(&meta, 9, "mint", "wallet"), None);
+    }
+
+    #[test]
+    fn pick_mint_prefers_the_non_quote_side() {
+        assert_eq!(pick_mint(WSOL_MINT, "token"), "token");
+        assert_eq!(pick_mint("token", WSOL_MINT), "token");
+        assert_eq!(pick_mint("token", "other"), "token");
+    }
+}

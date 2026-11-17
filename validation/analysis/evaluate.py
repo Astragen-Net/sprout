@@ -79,15 +79,16 @@ def permutation_p(y: np.ndarray, x: np.ndarray, n: int = 500, seed: int = 42) ->
 
 def bh_adjust(p_values: list[float]) -> list[float]:
     p = np.asarray(p_values, dtype=float)
-    n = len(p)
-    if n == 0:
-        return []
-    order = np.argsort(p)
-    ranked = p[order]
-    adjusted = ranked * n / np.arange(1, n + 1)
+    output = np.full(len(p), np.nan)
+    mask = np.isfinite(p)
+    if not mask.any():
+        return output.tolist()
+    finite = p[mask]
+    order = np.argsort(finite)
+    ranked = finite[order]
+    adjusted = ranked * len(finite) / np.arange(1, len(finite) + 1)
     adjusted = np.minimum.accumulate(adjusted[::-1])[::-1]
-    output = np.empty(n)
-    output[order] = np.clip(adjusted, 0, 1)
+    output[np.flatnonzero(mask)[order]] = np.clip(adjusted, 0, 1)
     return output.tolist()
 
 
@@ -166,11 +167,13 @@ def main() -> int:
 
     frame = pd.read_parquet(args.features)
     frame = frame.sort_values("slot").reset_index(drop=True)
-    eligible = frame[
+    cohort = frame[
         (~frame[censored].fillna(True))
         & frame["price_60s"].notna()
         & (frame["early_trades"].fillna(0) > 0)
     ].copy()
+    dead = int(cohort[f"dead_{horizon}"].fillna(False).sum())
+    eligible = cohort[cohort[outcome].notna()].copy()
 
     cut = int(len(eligible) * 0.7)
     exploration = eligible.iloc[:cut]
@@ -178,13 +181,19 @@ def main() -> int:
 
     lines: list[str] = []
     lines.append(f"# Phase 0 report — pumpfun launch signals ({horizon} outcome)\n")
+    lines.append(
+        "**Data status:** the capture used for these results predates the first-buy "
+        "decoder fix; see `KNOWN_ISSUES.md`. Effect sizes are provisional.\n"
+    )
     if horizon != "24h":
         lines.append(
             f"**Interim horizon: {horizon}. The pre-registered primary outcome is 24h; "
             "this report is descriptive until the 24h sample matures.**\n"
         )
     lines.append(f"- Launches captured: **{len(frame):,}**")
-    lines.append(f"- Eligible for {horizon} outcomes: **{len(eligible):,}**")
+    lines.append(f"- Uncensored cohort (T+60s price, early trades): **{len(cohort):,}**")
+    lines.append(f"- Dead (no post-T+60s trade): **{dead:,}**")
+    lines.append(f"- Observed {horizon} outcomes: **{len(eligible):,}**")
     lines.append(f"- Exploration / confirmation: **{len(exploration):,} / {len(confirmation):,}**")
     if len(eligible):
         lines.append(f"- {horizon} rug prevalence: **{eligible[outcome].mean():.1%}**")
@@ -324,7 +333,15 @@ def main() -> int:
     lines.append("- Post-migration AMM trades are not captured; migrated-token outcomes are stale.")
     lines.append("- Creator history is constrained by the 72h capture; insider is exploratory.")
     lines.append("- One venue and SOL-quoted coins only; USDC/other quote mints are excluded.")
-    lines.append("- Price-based rug definition only; no liquidity-pull data.\n")
+    lines.append("- Price-based rug definition only; no liquidity-pull data.")
+    lines.append(
+        "- Dead launches (no post-T+60s trade) are reported separately and excluded "
+        "from the price-based rug AUC."
+    )
+    lines.append(
+        "- Captures made before the first-buy fix may misstate early buy amounts; "
+        "see `KNOWN_ISSUES.md`.\n"
+    )
 
     report_path = Path(args.out)
     report_path.parent.mkdir(parents=True, exist_ok=True)

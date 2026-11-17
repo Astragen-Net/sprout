@@ -1,5 +1,10 @@
 # Phase 0 report — pumpfun launch signals (12h outcome)
 
+> **Historical intermediate report.** Produced with the pre-fix decoder and an
+> earlier capture snapshot; superseded by [`phase0_summary.md`](phase0_summary.md)
+> and [`phase0_v2.md`](phase0_v2.md). See
+> [`../../KNOWN_ISSUES.md`](../../KNOWN_ISSUES.md).
+
 **Interim horizon: 12h. The pre-registered primary outcome is 24h; this report is descriptive until the 24h sample matures.**
 
 - Launches captured: **42,754**

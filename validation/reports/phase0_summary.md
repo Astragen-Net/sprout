@@ -1,8 +1,12 @@
 # Phase 0 findings — interim, 2026-11-14
 
-Data: 42,754 launches, 2.56M trades, 25.6 hours of pumpfun capture; 100% block-time coverage; zero decode errors.
+> **Status: provisional.** The capture predates the first-buy decoder fix; see
+> [`../../KNOWN_ISSUES.md`](../../KNOWN_ISSUES.md). The stop/pivot decision is
+> robust to the known issues, but the effect sizes are not final.
 
-**Time correction:** the measured slot rate is 4.649 slots/s (~215 ms/slot), not 400 ms. The original 150-slot "T+60s" window was ~32 s and the 216,000-slot "24h" horizon was ~13 h. All windows were moved to chain time (`blocks_meta`); the 12 h horizon is the best-powered interim, while the 24 h primary is still underpowered.
+Data: 42,754 launches, 2.56M trades, 25.6 hours of pumpfun capture; 100% block-time coverage; zero balance-lookup decode errors (3.9M non-trade/unknown instructions ignored over the full capture). The v1 full-dataset rerun below uses the complete 122k-launch capture; the 42,754-launch snapshot was the interim.
+
+**Time correction:** the measured slot rate is 4.649 slots/s (~215 ms/slot), not 400 ms. The original 150-slot "T+60s" window was ~32 s and the 216,000-slot "24h" horizon was ~13 h. All windows were moved to chain time (`blocks_meta`); the 12 h horizon is the best-powered interim, while the 24 h primary was underpowered in the early snapshot. The full captured dataset provides n=7,896 for the 24 h result.
 
 ## Primary hypothesis — FAILED, and inverted
 
@@ -11,9 +15,10 @@ Data: 42,754 launches, 2.56M trades, 25.6 hours of pumpfun capture; 100% block-t
 | Horizon | n (confirmation) | Flagged n | Base rug | AUC | 95% CI | Flagged rug | Unflagged rug | Lift |
 |---|---:|---:|---:|---:|---|---:|---:|---:|
 | 12 h | 2,170 | 191 | 17.0% | 0.452 | 0.444–0.461 | 1.6% | 18.4% | 0.09× |
-| 24 h | 203 | — | — | 0.409 | 0.378–0.438 | — | — | underpowered |
+| 24 h (full dataset) | 7,896 | 681 | 20.7% | 0.450 | 0.446–0.455 | 1.9% | 22.5% | 0.08× |
+| 24 h (early snapshot) | 203 | — | — | 0.409 | 0.378–0.438 | — | — | underpowered |
 
-The inversion is consistent across 1 h/6 h/12 h/24 h outcomes, terminal-price vs minimum-price, and the 3-buyer variant. It is not a time-window artifact.
+The inversion is consistent across 1 h/6 h/12 h/24 h outcomes, terminal-price vs minimum-price, and the 3-buyer variant. It is not a time-window artifact. The generated full-dataset v1 report is [`phase0_v1_full_24h.md`](phase0_v1_full_24h.md).
 
 **Why:** flagged launches are high-demand launches. Flagged vs unflagged early buyers: **12.5 vs 2.1**; early volume **11.1 vs 1.8 SOL**; trade-derived concentration **0.75 vs 0.37**. The same-slot flag measures demand, not coordination. Demand and liquidity reduce the chance of a 90% drawdown within 12 hours.
 
@@ -44,7 +49,7 @@ The original "bundle detection" wedge is not supported. The identity-graph thesi
 
 ## Final v2 result — FAIL (2026-11-16)
 
-Fresh window 2026-11-15 00:00 to 22:08; 23,709 fresh launches with 24h outcomes, 5,624 with creator history. Primary n = 3,025:
+Fresh window 2026-11-15 00:00 to 22:08; 23,709 fresh uncensored launches; 11,721 dead (no post-T+60s trade); 11,988 observed 24h outcomes; 5,624 known-creator launches before dead exclusion, 3,083 with observed outcomes. Primary n = 3,025:
 
 - AUC **0.649** (95% CI 0.628–0.671) — below the 0.65 bar.
 - High-insider cohort (≥0.9): 2,151 launches, rug rate **24.4%** vs **7.1%** rest, lift **3.44×**.
@@ -52,11 +57,13 @@ Fresh window 2026-11-15 00:00 to 22:08; 23,709 fresh launches with 24h outcomes,
 - Secondary: expanded 0.607, repeat-≥2 0.618, creator history 0.601; bundle negative control 0.448 (inverted).
 - The interim pass (0.653 AUC, 1.31× precision) did not hold on the full window.
 
-The signal is real but weak-to-moderate and broad: the high cohort covers 71% of known-creator launches, and its rug rate is only 26% above base. It is not a standalone product.
+The signal is weak-to-moderate and broad: the high cohort covers 71% of known-creator launches, and its rug rate is only 26% above base. It is not a standalone product.
+
+**Data-quality caveat (2026-11-17):** the capture predates the first-buy decoder fix; ~24,914 launches have a first buy recorded as the curve remainder. Excluding the provably corrupt launches leaves the v2 AUC at ~0.646, below the bar, so the failure is robust; but the effect sizes are provisional. The 24h cohort also excludes 27,950 dead launches (no post-T+60s trade). See [`../../KNOWN_ISSUES.md`](../../KNOWN_ISSUES.md).
 
 ## Dev-dump exploratory (2026-11-16)
 
-The `pumpfunbots-reverse` pattern (creator dev-buy, creator sell within 5s, prior creator dump rate, sell-only network) was tested on the existing 122k launches against 24h rug. It is **not supported at this horizon**; most features are inverted:
+The [`pumpfunbots-reverse`](https://github.com/zostaff/pumpfunbots-reverse) pattern (creator dev-buy, creator sell within 5s, prior creator dump rate, sell-only network) was tested on the existing 122k launches against 24h rug. The test is exploratory and uses the same pre-fix capture; treat the AUCs as provisional. It is **not supported at this horizon**; most features are inverted:
 
 | Feature | n | AUC | 95% CI |
 |---|---:|---:|---|
@@ -76,3 +83,4 @@ Direct creator buying and selling, and prior dump history, predict **survival**,
 - Buyer gate: not started.
 - Rewrite: **not justified**.
 - Recommended action: stop the product effort or pivot to sybil/airdrop clustering or custom indexer consulting. Do not lower the bar or start the rewrite.
+- Data-quality status: provisional; see [`../../KNOWN_ISSUES.md`](../../KNOWN_ISSUES.md). The stop decision is unchanged.

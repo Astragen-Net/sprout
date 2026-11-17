@@ -1,8 +1,11 @@
 # Dev-dump exploratory test (not pre-registered)
 
+> **Exploratory; provisional.** Produced with the pre-fix decoder. See
+> [`../../KNOWN_ISSUES.md`](../../KNOWN_ISSUES.md).
+
 Uses the existing 122k-launch dataset already used by v1/v2; **exploratory only**. A feature must reach AUC ≥ 0.70 with CI lower > 0.60 before a fresh pre-registered capture is justified.
 
-- Eligible 24h launches: **26,679**
+- Observed 24h launches: **26,679**
 - 24h rug prevalence: **19.1%**
 
 | Feature | n | AUC | 95% CI | Flagged n | Flagged rug | Lift | Precision multiple |

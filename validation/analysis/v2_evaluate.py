@@ -70,12 +70,14 @@ def main() -> int:
 
     frame = pd.read_parquet(args.features)
     since = pd.Timestamp(args.since, tz="UTC").timestamp()
-    fresh = frame[
+    cohort = frame[
         (frame["launch_time"] >= since)
         & (~frame["censored_24h"].fillna(True))
         & frame["price_60s"].notna()
         & (frame["early_trades"].fillna(0) > 0)
     ].copy()
+    dead = int(cohort[OUTCOME].isna().sum())
+    fresh = cohort[cohort[OUTCOME].notna()].copy()
     known = fresh["insider_known"].fillna(False).astype(bool)
 
     primary = eval_signal(fresh, "insider_score", OUTCOME, known)
@@ -115,7 +117,7 @@ def main() -> int:
         & v1[OUTCOME].notna()
         & (~v1["censored_24h"].fillna(True))
     ]
-    test = fresh[known & fresh[OUTCOME].notna()]
+    test = fresh[known]
     feature_columns = ["creator_prior_launches", "insider_score", "early_buy_volume_sol"]
     combined_auc = np.nan
     combined_n = 0
@@ -131,11 +133,22 @@ def main() -> int:
 
     lines: list[str] = []
     lines.append("# Phase 0 v2 — insider-network validation\n")
+    lines.append(
+        "**Data status:** the capture used for these results predates the first-buy "
+        "decoder fix; see `KNOWN_ISSUES.md`. Effect sizes are provisional.\n"
+    )
     lines.append(f"- Fresh window start: `{args.since}`")
-    lines.append(f"- Fresh launches with 24h outcomes: **{len(fresh):,}**")
-    lines.append(f"- Known-creator launches: **{int(known.sum()):,}**")
+    lines.append(
+        f"- Fresh uncensored cohort (T+60s price, early trades): **{len(cohort):,}**"
+    )
+    lines.append(f"- Dead (no post-T+60s trade): **{dead:,}**")
+    lines.append(f"- Fresh launches with observed 24h outcomes: **{len(fresh):,}**")
+    lines.append(f"- Known-creator launches with observed outcomes: **{int(known.sum()):,}**")
     if len(fresh):
-        lines.append(f"- 24h rug prevalence among fresh eligible: **{fresh[OUTCOME].mean():.1%}**")
+        lines.append(
+            f"- 24h rug prevalence among observed fresh launches: "
+            f"**{fresh[OUTCOME].mean():.1%}**"
+        )
     lines.append("")
 
     lines.append("## Primary: insider_score → 24h rug\n")
@@ -178,6 +191,14 @@ def main() -> int:
     lines.append("- Pumpfun and SOL-quoted coins only; price-based rug definition.")
     lines.append("- No funding-graph tracing; insider is a repeat-buyer proxy.")
     lines.append("- Coverage depends on prior launches; the 24h window limits the fresh sample.")
+    lines.append(
+        "- Dead launches (no post-T+60s trade) are reported separately and excluded "
+        "from the price-based rug AUC."
+    )
+    lines.append(
+        "- Captures made before the first-buy fix may misstate early buy amounts; "
+        "see `KNOWN_ISSUES.md`."
+    )
     lines.append("- Do not tune thresholds on this window; a secondary pass without the primary is not confirmation.\n")
 
     report = Path(args.out)

@@ -10,3 +10,7 @@ It exists to exercise the loader and feature pipeline without a 72-hour capture:
 ```
 
 It is too short to produce 12-hour or 24-hour outcomes. Use it for smoke tests only.
+
+The fixture is public on-chain data; no copyright is claimed over the underlying
+data. It contains third-party token metadata and URIs (for example IPFS links);
+those are not endorsed by this project.

@@ -1,17 +1,20 @@
 # Findings: do pump.fun launch signals predict rugs?
 
+> **Status: provisional.** The 72-hour capture predates the first-buy decoder fix; see [KNOWN_ISSUES.md](KNOWN_ISSUES.md). The stop/pivot decision is robust to the known issues, but the effect sizes below are not final.
+
 ## Data
 
 - 72 hours of live Yellowstone gRPC capture: 2026-11-13 22:08 to 2026-11-16 22:08 UTC.
-- 21,210,944 transactions, 122,660 launches, 7,552,052 trades, 3,868 migrations, zero decode errors.
+- 21,210,944 transactions, 122,660 launch events (122,121 unique mints), 7,552,052 trade events (7,524,596 after dedupe), 3,868 migrations, zero balance-lookup decode errors (3,923,051 non-trade/unknown pumpfun instructions were ignored).
 - Pumpfun only; SOL/WSOL-quoted coins. Windows use **chain time** from `blocks_meta`, not ingest time. The measured slot rate is ~4.65 slots/s (~215 ms/slot).
-- 24-hour outcome cohort: 26,679 launches with at least one post-T+60s trade and a matured 24h window; rug prevalence **19.1%**.
+- 24-hour cohort: 54,629 uncensored launches with a T+60s price and early trades; 27,950 (51.2%) had no post-T+60s trade (dead) and are excluded from price-based rug AUC; 26,679 observed 24h outcomes. Rug prevalence among observed launches: **19.1%**.
 
 ## Method
 
 - Pre-registered v1 (`PREREGISTRATION.md`) and v2 (`PREREGISTRATION_V2.md`) before outcome analysis. v2 used a non-overlapping fresh window.
 - Features computed at **T+60s** chain time.
 - Primary outcome: **24h rug** = minimum price within 24 hours is at most 10% of the T+60s price. Price is the last SOL/WSOL trade price `quote/base`.
+- Dead launches (no post-T+60s trade) are reported separately and excluded from rug AUC by construction.
 - Metrics: AUC with 1,000-sample bootstrap CIs, decile lift, flagged-vs-unflagged rates, permutation p-values with Holm-BH correction.
 - Negative control: `bundle_score` should not be positively predictive; it is inverted.
 
@@ -24,9 +27,10 @@
 | Horizon | n | AUC | 95% CI | Flagged rug | Unflagged rug |
 |---|---:|---:|---|---:|---:|
 | 12 h (v1 interim) | 2,170 | 0.452 | 0.444–0.461 | 1.6% | 18.4% |
-| 24 h (v1, underpowered) | 203 | 0.409 | 0.378–0.438 | — | — |
+| 24 h (full captured dataset) | 7,896 | 0.450 | 0.446–0.455 | 1.9% | 22.5% |
+| 24 h (early underpowered snapshot) | 203 | 0.409 | 0.378–0.438 | — | — |
 
-Flagged launches have 12.5 early buyers vs 2.1, 11.1 vs 1.8 SOL early volume, and 0.75 vs 0.37 trade-derived concentration. The flag measures **demand**, not coordination; demand and liquidity reduce the chance of a 90% drawdown.
+The full 24 h result is consistent with the 12 h interim; the n=203 row was an early snapshot before the capture matured. The generated full-dataset report is [`validation/reports/phase0_v1_full_24h.md`](validation/reports/phase0_v1_full_24h.md). Flagged launches have 12.5 early buyers vs 2.1, 11.1 vs 1.8 SOL early volume, and 0.75 vs 0.37 trade-derived concentration. The flag measures **demand**, not coordination; demand and liquidity reduce the chance of a 90% drawdown.
 
 ### 2. Insider repeat-buyer network — real but below the bar
 
@@ -47,7 +51,7 @@ The signal replicates directionally but is broad: 71% of known-creator launches 
 
 ### 3. Creator dev-buy / launch-and-dump — inverted at 24h
 
-Inspired by the open-source `pumpfunbots-reverse` research (creator dev-buys, fast sells, sell-only networks). Tested on the existing 122k-launch dataset as an exploratory check, not a pre-registered gate.
+Inspired by the open-source [`pumpfunbots-reverse`](https://github.com/zostaff/pumpfunbots-reverse) research (creator dev-buys, fast sells, sell-only networks). Tested on the existing 122k-launch dataset as an exploratory check, not a pre-registered gate.
 
 | Feature | n | AUC | 95% CI |
 |---|---:|---:|---|
@@ -59,9 +63,16 @@ Inspired by the open-source `pumpfunbots-reverse` research (creator dev-buys, fa
 
 Direct creator buying/selling and prior dump history predict **survival**, not a 24h rug. Launches with a creator sell within 5 seconds rug at ~0.8% vs a 19.1% base rate. The repo's pattern may be a **5-second dump** that a 24h/90%-drawdown label does not capture; dev-buys paid by sub-wallets are also invisible in this measurement.
 
+## Data quality
+
+- The capture predates the first-buy decoder fix. ~24,914 launches have a first buy >500M tokens (the curve remainder), which inflates `early_buy_base` and dilutes the share features; 403/3,025 v2 primary launches are affected. Excluding them leaves the v2 AUC at ~0.646, so the failure is robust, but the effect sizes are provisional. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+- 27,950/54,629 (51.2%) of the 24h cohort have no post-T+60s trade and are excluded from rug AUC. The 19.1% prevalence is among the 26,679 observed launches, not the full cohort.
+- `ignored=3,923,051`; `multi_hop_curve_swap` and `migrate_bonding_curve_creator` are not decoded. “Zero decode errors” refers to balance lookups only.
+
 ## Interpretation
 
 - The launch-level "bundle detection" wedge is not supported. It is a demand/latency signal.
+- These effect sizes are provisional: the capture predates the first-buy decoder fix and excludes dead launches from rug AUC. The stop decision is robust, but rerun on regenerated data before citing exact numbers.
 - The identity-graph signal is real but weak and broad at the launch level. As a standalone product it fails the pre-registered bar.
 - The dev-dump pattern from the open-source bot research does not transfer to 24h rug outcomes. Testing it properly would require a **5–60 second** dump label, sub-wallet/funding-link tracing, and a different buyer (pre-trade avoidance for bots).
 - The honest conclusion: do not build the launch-identity API on this evidence. The capture and validation infrastructure remain reusable for a different question.
@@ -71,6 +82,7 @@ Direct creator buying/selling and prior dump history predict **survival**, not a
 - Pre-registrations and success bars are frozen in `PREREGISTRATION.md` and `PREREGISTRATION_V2.md`.
 - The capture tool and analysis scripts are in `validation/`; a one-minute fixture is in `validation/fixtures/`.
 - The raw capture and full dataset are not included. The capture tool can reproduce them with a provider token.
+- The published capture stores only decoded events; a decoder fix cannot be applied retroactively. Re-capture with the fixed decoder (or backfill the affected create transactions) before reproducing the numbers.
 
 ## Limitations
 
@@ -80,4 +92,8 @@ Direct creator buying/selling and prior dump history predict **survival**, not a
 - Post-migration AMM trades are not captured; migrated-token outcomes are stale.
 - Direct creator-wallet measurement misses dev-buys paid by sub-wallets.
 - The 24h maturity window limited the v2 fresh sample to ~22 hours of launches.
+- First-buy amounts in the published capture are misstated for create+buy launches; see `KNOWN_ISSUES.md`.
+- Dead launches (no post-T+60s trade) are excluded from price-based rug AUC and reported separately.
+- Coverage is not complete: 3.9M pumpfun instructions were ignored, including multi-hop swaps and one migration variant.
+- The capture stores no raw transactions, so old captures cannot be re-decoded.
 - Findings are observational and not financial advice.

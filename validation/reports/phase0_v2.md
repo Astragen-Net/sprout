@@ -1,9 +1,13 @@
 # Phase 0 v2 — insider-network validation
 
+**Data status:** the capture used for these results predates the first-buy decoder fix; see [`KNOWN_ISSUES.md`](../../KNOWN_ISSUES.md). Effect sizes are provisional.
+
 - Fresh window start: `2026-11-15T00:00:00Z`
-- Fresh launches with 24h outcomes: **23,709**
-- Known-creator launches: **5,624**
-- 24h rug prevalence among fresh eligible: **20.5%**
+- Fresh uncensored cohort (T+60s price, early trades): **23,709**
+- Dead (no post-T+60s trade): **11,721**
+- Fresh launches with observed 24h outcomes: **11,988**
+- Known-creator launches with observed outcomes: **3,083**
+- 24h rug prevalence among observed fresh launches: **20.5%**
 
 ## Primary: insider_score → 24h rug
 
@@ -33,4 +37,6 @@
 - Pumpfun and SOL-quoted coins only; price-based rug definition.
 - No funding-graph tracing; insider is a repeat-buyer proxy.
 - Coverage depends on prior launches; the 24h window limits the fresh sample.
+- Dead launches (no post-T+60s trade) are reported separately and excluded from the price-based rug AUC.
+- Captures made before the first-buy fix may misstate early buy amounts; see `KNOWN_ISSUES.md`.
 - Do not tune thresholds on this window; a secondary pass without the primary is not confirmation.

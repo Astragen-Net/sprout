@@ -1,23 +1,26 @@
 # pumpfun V3 research kit
 
-A reproducible research kit for pump.fun V3: a Rust gRPC capture/decoder, a Python/DuckDB validation pipeline, and the pre-registered findings from 72 hours of mainnet data (122,660 launches, 7.55M trades, zero decode errors).
+A reproducible research kit for pump.fun V3: a Rust gRPC capture/decoder, a Python/DuckDB validation pipeline, and the pre-registered findings from 72 hours of mainnet data (~122k launches, 7.5M deduped trades, zero balance-lookup decode errors).
 
 **Research and educational project. Not financial advice. No warranty. Not affiliated with pump.fun.**
+
+> **Status: research-grade; effect sizes are provisional.** The 72-hour capture predates the first-buy decoder fix. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md). The stop/pivot decision is robust, but do not cite the effect sizes as final until the data is regenerated.
 
 ## Findings at a glance
 
 | Test | Result |
 |---|---|
-| Same-slot bundle score → rug | **Inverted** (12h interim AUC 0.452; 24h AUC 0.409, n=203; flagged 1.6% vs 18.4% unflagged) |
+| Same-slot bundle score → rug | **Inverted** (full 24h AUC 0.450, n=7,896; 12h interim 0.452; flagged 1.9% vs 22.5% unflagged) |
 | Insider repeat-buyer network → 24h rug | **Failed the bar** (AUC 0.649 vs 0.65; precision 1.26× vs 1.30×) |
 | Creator dev-buy / fast-sell / prior dump → 24h rug | **Inverted** (AUC 0.286–0.448); no feature reached 0.70 |
 | Bundle negative control | 0.448 (inverted, as expected) |
 
-The short version: same-slot bundle and sniper signals measure **demand**, not coordination; the insider network is real but too broad to clear a product bar; direct creator dev-buys and fast sells predict **survival** at 24h. See [FINDINGS.md](FINDINGS.md) for the method, numbers and limitations.
+The short version: same-slot bundle and sniper signals measure **demand**, not coordination; the insider network is real but too broad to clear a product bar; direct creator dev-buys and fast sells predict **survival** at 24h. See [FINDINGS.md](FINDINGS.md) for the method, numbers and limitations, and [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the data-quality caveats. The table above is provisional.
 
 ## Repository layout
 
 ```
+KNOWN_ISSUES.md       Data status, decoder limitation, coverage caveats
 validation/
   capture/            Rust gRPC capture + pumpfun decoder (legacy, V2, V3)
   analysis/           Python/DuckDB loader, feature computation, evaluation
@@ -50,10 +53,12 @@ cargo build --release
 ```bash
 export GRPC_URL="https://your-geyser-endpoint"
 export GRPC_TOKEN="your-provider-token"
-CAPTURE_MINUTES=5 CAPTURE_OUT=../data/raw ./target/release/sprout-capture
+mkdir -p ../data/raw/live
+CAPTURE_MINUTES=5 CAPTURE_OUT=../data/raw/live ./target/release/sprout-capture \
+  2> ../data/raw/live/capture.log
 ```
 
-`CAPTURE_MINUTES=0` runs until interrupted. Files rotate hourly and are zstd-compressed JSONL.
+`CAPTURE_MINUTES=0` runs until interrupted. Files rotate hourly and are zstd-compressed JSONL. Do not restart mid-hour: the current implementation truncates the current hour's file; see [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 ### Analyse
 
@@ -61,7 +66,7 @@ CAPTURE_MINUTES=5 CAPTURE_OUT=../data/raw ./target/release/sprout-capture
 cd validation
 python3.14 -m venv .venv
 .venv/bin/pip install -r analysis/requirements.txt
-.venv/bin/python analysis/load.py --input data/raw --db data/sprout.duckdb --reset --include-active
+.venv/bin/python analysis/load.py --input data/raw/live --db data/sprout.duckdb --reset --include-active
 .venv/bin/python analysis/signals.py --db data/sprout.duckdb
 .venv/bin/python analysis/evaluate.py --horizon 12h --out reports/local_report.md
 ```
@@ -82,6 +87,7 @@ The fixture is one minute of public pumpfun events; it verifies the pipeline, no
 ## What is not included
 
 - The raw 72-hour capture (~4.2 GB) and the full launch dataset.
+- Raw transactions. The capture stores decoded events only, so an old capture cannot be re-decoded with a fixed decoder; see [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 - The pump.fun IDL JSON; it has no explicit license, so fetch it from the public `pump-fun/pump-public-docs` repository if you need it. The decoder uses public protocol facts.
 - Any code from a prior proprietary codebase. See [PROVENANCE.md](PROVENANCE.md).
 

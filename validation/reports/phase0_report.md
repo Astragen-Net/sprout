@@ -1,5 +1,11 @@
 # Phase 0 report — pumpfun launch signals
 
+> **Historical intermediate report.** Produced with the pre-fix decoder and an
+> earlier capture snapshot; superseded by
+> [`phase0_summary.md`](phase0_summary.md) and
+> [`phase0_v2.md`](phase0_v2.md). See
+> [`../../KNOWN_ISSUES.md`](../../KNOWN_ISSUES.md).
+
 - Launches captured: **42,754**
 - Eligible for 24h outcomes: **14,430**
 - Exploration / confirmation: **10,101 / 4,329**
