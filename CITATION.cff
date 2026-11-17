@@ -6,6 +6,7 @@ authors:
   - family-names: Jaguste
     given-names: Rahul
 license: MIT
+repository-code: "https://github.com/rahuljaguste/sprout"
 version: 0.1.1
 date-released: 2026-11-17
 abstract: >-
