@@ -100,4 +100,7 @@ fee + 1% slippage each side) is also negative: mean -34.9%, median -67.0%,
 win rate 13.9%; the rest, random and all-launch cohorts are negative too, as are
 the zero-cost, 50%-stop and 1h-horizon variants. See
 [`validation/reports/replay_backtest.md`](validation/reports/replay_backtest.md).
+A post-T+60 5–60s dump harness also finds no candidate (best `insider_score`
+AUC 0.646 at 60s; creator/dev features inverted); see
+[`validation/reports/short_horizon_dump.md`](validation/reports/short_horizon_dump.md).
 This reinforces the stop decision; it is not evidence of a profit edge.

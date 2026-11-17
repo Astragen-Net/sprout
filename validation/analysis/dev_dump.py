@@ -26,7 +26,7 @@ OUT = "reports/dev_dump_exploratory.md"
 PRIOR_DUMP_CAP = 50
 
 
-def load(con):
+def load(con, features_path: str = FEATURES):
     launches = con.execute(
         """
         SELECT l.mint, l.creator, l.slot, l.sig, b.block_time AS launch_time
@@ -49,7 +49,7 @@ def load(con):
         WHERE rel_seconds >= 0 AND rel_seconds <= 60
         """
     ).df()
-    features = pd.read_parquet(FEATURES)[
+    features = pd.read_parquet(features_path)[
         [
             "mint", "launch_time", "censored_24h", "price_60s",
             "early_trades", "rug_24h", "bundle_score", "insider_score",

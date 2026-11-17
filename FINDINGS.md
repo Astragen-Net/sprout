@@ -76,6 +76,19 @@ An exploratory replay (`validation/analysis/replay_backtest.py`) enters at the f
 
 The high-signal cohort is **worse** than the rest on median return, and every cohort loses money. Zero-cost, 50%-stop, and 1h-horizon variants remain negative. The mean is negative even before costs. This is not a tradable profit edge. See [`validation/reports/replay_backtest.md`](validation/reports/replay_backtest.md) for the full method, bootstrap intervals and caveats.
 
+### 5. Short-horizon dump harness — no candidate
+
+A reusable harness (`validation/analysis/short_horizon_dump.py`) evaluates launch-time and creator/dev features against 5/15/30/60-second dumps **after T+60s**. A dump is a 50% drop from `price_60s` within the window. No-trade launches are excluded from the AUC.
+
+| Window | Traded launches | Dump rate | Best feature | AUC (95% CI) |
+|---|---:|---:|---|---|
+| 5s | 22,076 | 16.0% | insider_score | 0.578 (0.561–0.594) |
+| 15s | 26,799 | 29.6% | insider_score | 0.602 (0.589–0.615) |
+| 30s | 29,387 | 36.5% | insider_score | 0.625 (0.613–0.637) |
+| 60s | 32,020 | 40.6% | insider_score | 0.646 (0.634–0.657) |
+
+No feature clears the exploratory bar (AUC ≥ 0.70, CI lower > 0.60). `creator_sold_5s`, `creator_create_buy`, and the other creator/dev features are **inverted** (AUC < 0.5) at every window. The weak positive is creator history/insider score, consistent with the 24h result but not strong enough. This harness starts at T+60, so it does not test the first-5s dev-dump pattern; that needs a launch-anchored variant.
+
 ## Data quality
 
 - The capture predates the first-buy decoder fix. ~24,914 launches have a first buy >500M tokens (the curve remainder), which inflates `early_buy_base` and dilutes the share features; 403/3,025 v2 primary launches are affected. Excluding them leaves the v2 AUC at ~0.646, so the failure is robust, but the effect sizes are provisional. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md).

@@ -15,6 +15,7 @@ A reproducible research kit for pump.fun V3: a Rust gRPC capture/decoder, a Pyth
 | Creator dev-buy / fast-sell / prior dump → 24h rug | **Inverted** (AUC 0.286–0.448); no feature reached 0.70 |
 | Bundle negative control | 0.448 (inverted, as expected) |
 | Replay backtest, insider ≥0.9, 24h hold, fees/slippage | **Negative** (mean -34.9%, median -67.0%, win 13.9%; zero-cost/stop/1h variants also negative) |
+| Post-T+60 5–60s dump harness | **No candidate** (best insider 0.646 at 60s; creator/dev features inverted) |
 
 The short version: same-slot bundle and sniper signals measure **demand**, not coordination; the insider network is real but too broad to clear a product bar; direct creator dev-buys and fast sells predict **survival** at 24h. See [FINDINGS.md](FINDINGS.md) for the method, numbers and limitations, and [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the data-quality caveats. The table above is provisional.
 
@@ -100,6 +101,14 @@ cd validation
 ```
 
 It enters at the first trade after T+60s, exits at the horizon (default 24h), applies fees/slippage to both sides, and compares the high-signal cohort with the rest, a random sample, and all launches. See [reports/replay_backtest.md](validation/reports/replay_backtest.md). The fixture is too short for this; it needs a multi-hour capture. Results are exploratory and provisional.
+
+### Short-horizon dump research
+
+```bash
+.venv/bin/python analysis/short_horizon_dump.py
+```
+
+This evaluates launch-time and creator/dev features against 5/15/30/60-second dumps after T+60s. It reports no candidate: the best feature is `insider_score` at 60s (AUC 0.646, 95% CI 0.634–0.657); creator/dev features are inverted. See [reports/short_horizon_dump.md](validation/reports/short_horizon_dump.md). This is a post-T+60 harness; the first-5s dev-dump pattern would need a launch-anchored variant.
 
 ## What is not included
 

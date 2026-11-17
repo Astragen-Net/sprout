@@ -27,6 +27,7 @@ Outputs:
 - `reports/phase0_v1_full_24h.md` — generated full-dataset v1 24h report.
 - `reports/phase0_v2.md` — fresh-window v2 report (`v2_evaluate.py`).
 - `reports/replay_backtest.md` — replay backtest report (`replay_backtest.py`).
+- `reports/short_horizon_dump.md` — post-T+60 short-dump harness report (`short_horizon_dump.py`).
 - `reports/decile_lift.png`, `reports/roc_bundle.png` — charts.
 
 Replay backtest (requires a full capture, not the one-minute fixture):
@@ -35,6 +36,13 @@ Replay backtest (requires a full capture, not the one-minute fixture):
 .venv/bin/python analysis/replay_backtest.py
 .venv/bin/python analysis/replay_backtest.py --horizon 1h --stop-loss 0.5
 .venv/bin/python analysis/replay_backtest.py --signal bundle_score --threshold 0
+```
+
+Short-horizon dump harness:
+
+```bash
+.venv/bin/python analysis/short_horizon_dump.py
+.venv/bin/python analysis/short_horizon_dump.py --windows 5,15,30 --drop 0.4
 ```
 
 `load.py` is incremental and idempotent. It skips the file currently being
