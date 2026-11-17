@@ -2,6 +2,8 @@
 name = "sprout-capture"
 version = "0.1.0"
 edition = "2024"
+authors = ["Rahul Jaguste"]
+license = "MIT"
 
 [dependencies]
 anyhow = "1"

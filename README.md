@@ -87,4 +87,4 @@ The fixture is one minute of public pumpfun events; it verifies the pipeline, no
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. Copyright (c) 2026 Rahul Jaguste. See [LICENSE](LICENSE).
