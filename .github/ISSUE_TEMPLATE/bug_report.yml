@@ -1,0 +1,32 @@
+name: Bug report
+description: Report a decoder, capture, analysis, or replay issue.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: "Do not include provider tokens, private keys, or raw capture data."
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Include the command, expected behavior, and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction
+      description: Minimal command, fixture, or event shape that reproduces it.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+      placeholder: "e.g. 173b8ec"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Redact endpoints and tokens.

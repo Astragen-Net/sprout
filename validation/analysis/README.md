@@ -26,12 +26,22 @@ Outputs:
 - `reports/phase0_report.md` — primary/secondary results and pass/fail.
 - `reports/phase0_v1_full_24h.md` — generated full-dataset v1 24h report.
 - `reports/phase0_v2.md` — fresh-window v2 report (`v2_evaluate.py`).
+- `reports/replay_backtest.md` — replay backtest report (`replay_backtest.py`).
 - `reports/decile_lift.png`, `reports/roc_bundle.png` — charts.
+
+Replay backtest (requires a full capture, not the one-minute fixture):
+
+```bash
+.venv/bin/python analysis/replay_backtest.py
+.venv/bin/python analysis/replay_backtest.py --horizon 1h --stop-loss 0.5
+.venv/bin/python analysis/replay_backtest.py --signal bundle_score --threshold 0
+```
 
 `load.py` is incremental and idempotent. It skips the file currently being
 written by the capture (less than 120 seconds old) unless `--include-active` is
 passed; rerun it later to pick that file up. Duplicate events are ignored by
-`(sig, ix_path, event_ord)`.
+`(sig, ix_path, event_ord)`. A truncated or corrupt zstd stream is loaded up to
+the error but is not marked ingested, so the next run retries it.
 
 ## Definitions
 
@@ -86,5 +96,6 @@ cd capture && cargo test --locked
 - Concentration is trade-derived, not true holder balances.
 - USDC/other quote mints are captured but excluded from the primary analysis.
 - `multi_hop_curve_swap` and `migrate_bonding_curve_creator` are not decoded.
-- Restarting the capture truncates the current hourly file and does not resume
-  from a persisted checkpoint.
+- No raw-transaction capture mode; old captures store decoded events only.
+- The capture now writes a per-run hourly file and persists a checkpoint, so
+  restarts are safe. Captures made before this fix may contain a truncated hour.

@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it."
+title: "pumpfun V3 research kit"
+type: software
+authors:
+  - family-names: Jaguste
+    given-names: Rahul
+license: MIT
+version: 0.1.1
+date-released: 2026-11-17
+abstract: >-
+  A reproducible capture, decoding, validation, and replay-backtest kit for
+  pump.fun V3 launch signals, including pre-registered negative results and a
+  one-minute public fixture.
+keywords:
+  - solana
+  - pumpfun
+  - geyser
+  - research
+  - signal-validation
+  - replay-backtest

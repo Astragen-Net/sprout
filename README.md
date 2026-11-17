@@ -14,6 +14,7 @@ A reproducible research kit for pump.fun V3: a Rust gRPC capture/decoder, a Pyth
 | Insider repeat-buyer network → 24h rug | **Failed the bar** (AUC 0.649 vs 0.65; precision 1.26× vs 1.30×) |
 | Creator dev-buy / fast-sell / prior dump → 24h rug | **Inverted** (AUC 0.286–0.448); no feature reached 0.70 |
 | Bundle negative control | 0.448 (inverted, as expected) |
+| Replay backtest, insider ≥0.9, 24h hold, fees/slippage | **Negative** (mean -34.9%, median -67.0%, win 13.9%; zero-cost/stop/1h variants also negative) |
 
 The short version: same-slot bundle and sniper signals measure **demand**, not coordination; the insider network is real but too broad to clear a product bar; direct creator dev-buys and fast sells predict **survival** at 24h. See [FINDINGS.md](FINDINGS.md) for the method, numbers and limitations, and [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the data-quality caveats. The table above is provisional.
 
@@ -21,6 +22,11 @@ The short version: same-slot bundle and sniper signals measure **demand**, not c
 
 ```
 KNOWN_ISSUES.md       Data status, decoder limitation, coverage caveats
+CONTRIBUTING.md       Development and pull-request checklist
+SECURITY.md           Secret handling and vulnerability reporting
+CHANGELOG.md
+CITATION.cff
+docs/EVENT_SCHEMA.md  JSONL event schema and identifiers
 validation/
   capture/            Rust gRPC capture + pumpfun decoder (legacy, V2, V3)
   analysis/           Python/DuckDB loader, feature computation, evaluation
@@ -58,7 +64,7 @@ CAPTURE_MINUTES=5 CAPTURE_OUT=../data/raw/live ./target/release/sprout-capture \
   2> ../data/raw/live/capture.log
 ```
 
-`CAPTURE_MINUTES=0` runs until interrupted. Files rotate hourly and are zstd-compressed JSONL. Do not restart mid-hour: the current implementation truncates the current hour's file; see [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
+`CAPTURE_MINUTES=0` runs until interrupted. Files rotate hourly and are zstd-compressed JSONL. Restarts resume from `data/raw/live/checkpoint` and write a new per-run file, so an existing hour is not truncated. Use Ctrl-C for a graceful stop.
 
 ### Analyse
 
@@ -83,6 +89,17 @@ cd validation
 ```
 
 The fixture is one minute of public pumpfun events; it verifies the pipeline, not outcomes.
+
+### Replay backtest
+
+After a full capture and `signals.py`:
+
+```bash
+cd validation
+.venv/bin/python analysis/replay_backtest.py
+```
+
+It enters at the first trade after T+60s, exits at the horizon (default 24h), applies fees/slippage to both sides, and compares the high-signal cohort with the rest, a random sample, and all launches. See [reports/replay_backtest.md](validation/reports/replay_backtest.md). The fixture is too short for this; it needs a multi-hour capture. Results are exploratory and provisional.
 
 ## What is not included
 

@@ -63,6 +63,19 @@ Inspired by the open-source [`pumpfunbots-reverse`](https://github.com/zostaff/p
 
 Direct creator buying/selling and prior dump history predict **survival**, not a 24h rug. Launches with a creator sell within 5 seconds rug at ~0.8% vs a 19.1% base rate. The repo's pattern may be a **5-second dump** that a 24h/90%-drawdown label does not capture; dev-buys paid by sub-wallets are also invisible in this measurement.
 
+### 4. Replay backtest — no profit edge
+
+An exploratory replay (`validation/analysis/replay_backtest.py`) enters at the first trade after T+60s, holds to 24h, and applies 1% fee + 1% slippage on each side. On the v2 fresh window:
+
+| Cohort | Filled | Mean | Median | Win rate |
+|---|---:|---:|---:|---:|
+| insider_score ≥ 0.9 | 1,830 | -34.9% | -67.0% | 13.9% |
+| insider_score < 0.9 | 738 | -30.2% | -33.7% | 10.4% |
+| random | 1,962 | -35.0% | -58.5% | 12.8% |
+| all | 2,568 | -33.6% | -57.0% | 12.9% |
+
+The high-signal cohort is **worse** than the rest on median return, and every cohort loses money. Zero-cost, 50%-stop, and 1h-horizon variants remain negative. The mean is negative even before costs. This is not a tradable profit edge. See [`validation/reports/replay_backtest.md`](validation/reports/replay_backtest.md) for the full method, bootstrap intervals and caveats.
+
 ## Data quality
 
 - The capture predates the first-buy decoder fix. ~24,914 launches have a first buy >500M tokens (the curve remainder), which inflates `early_buy_base` and dilutes the share features; 403/3,025 v2 primary launches are affected. Excluding them leaves the v2 AUC at ~0.646, so the failure is robust, but the effect sizes are provisional. See [KNOWN_ISSUES.md](KNOWN_ISSUES.md).

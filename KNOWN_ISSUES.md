@@ -64,7 +64,9 @@ separately in the generated reports.
   are not emitted. Reconcile the counters before describing a capture as
   complete.
 - No raw transaction is stored. The JSONL contains decoded events only, so a
-  decoder fix cannot be applied retroactively to old captures.
+  decoder fix cannot be applied retroactively to old captures. A raw-transaction
+  capture mode is not implemented; add one before long captures if retroactive
+  re-decoding is required.
 - Balances are transaction-level. If a transaction contains multiple fills for
   the same mint, the base side is now read from each user's token account, but
   the quote side still uses the curve vault and is netted across fills. This is
@@ -76,9 +78,12 @@ separately in the generated reports.
 - No post-migration AMM trades; migrated-token outcomes are stale.
 - No USDC/other quote mints in the primary analysis.
 - No RPC funding graph; insider is a repeat-buyer proxy.
-- Restarting the capture truncates the current hourly file and does not resume
-  from a persisted slot checkpoint. Do not restart mid-hour until this is fixed;
-  use a fresh output directory or wait for the hour boundary.
+- Restart handling: the capture now writes a unique file per process start
+  (`pumpfun-<hour>-<runid>.jsonl.zst`) and persists a slot checkpoint every 5 s.
+  A restart no longer truncates the current hour and resumes with an 8-slot
+  overlap. Captures made before this fix may contain a truncated hour.
+- `load.py` no longer marks a truncated zstd stream as fully ingested; the file
+  is retried on the next run.
 - The fixture is one minute of public on-chain data. It contains third-party
   token metadata and URIs; those are not endorsed.
 
@@ -89,3 +94,10 @@ launches leaves the v2 AUC at ~0.646 (still below 0.65); the dead-launch
 extremes give 0.649 (dead=rug) or 0.558 (dead=not-rug); the v1 inversions
 persist. The published effect sizes are provisional, but none of the known issues
 reverses the negative result.
+
+A replay backtest of the insider high cohort (entry after T+60s, 24h hold, 1%
+fee + 1% slippage each side) is also negative: mean -34.9%, median -67.0%,
+win rate 13.9%; the rest, random and all-launch cohorts are negative too, as are
+the zero-cost, 50%-stop and 1h-horizon variants. See
+[`validation/reports/replay_backtest.md`](validation/reports/replay_backtest.md).
+This reinforces the stop decision; it is not evidence of a profit edge.

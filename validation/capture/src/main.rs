@@ -7,9 +7,9 @@
 use std::{
     collections::HashMap,
     env,
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
     io::{BufWriter, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::LazyLock,
     time::{Duration, Instant},
 };
@@ -146,6 +146,7 @@ struct Stats {
 
 struct Writer {
     dir: PathBuf,
+    run_id: String,
     encoder: Option<Encoder<'static, BufWriter<File>>>,
     hour: i64,
     lines: u64,
@@ -155,8 +156,14 @@ struct Writer {
 impl Writer {
     fn new(dir: PathBuf) -> Result<Self> {
         fs::create_dir_all(&dir).with_context(|| format!("create {}", dir.display()))?;
+        let run_id = format!(
+            "{}-{}",
+            chrono::Utc::now().format("%Y%m%dT%H%M%SZ"),
+            std::process::id()
+        );
         Ok(Self {
             dir,
+            run_id,
             encoder: None,
             hour: i64::MIN,
             lines: 0,
@@ -182,11 +189,21 @@ impl Writer {
         if let Some(encoder) = self.encoder.take() {
             encoder.finish()?;
         }
+        // A unique run id per process start means a restart never truncates
+        // an existing hour. create_new fails loudly instead of overwriting.
+        let hour_time =
+            chrono::DateTime::from_timestamp(hour * 3600, 0).context("invalid capture hour")?;
         let name = format!(
-            "pumpfun-{}.jsonl.zst",
-            chrono::Utc::now().format("%Y%m%dT%H")
+            "pumpfun-{}-{}.jsonl.zst",
+            hour_time.format("%Y%m%dT%H"),
+            self.run_id
         );
-        let file = File::create(self.dir.join(name))?;
+        let path = self.dir.join(name);
+        let file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .with_context(|| format!("create {}", path.display()))?;
         let buffered = BufWriter::with_capacity(1 << 20, file);
         self.encoder = Some(Encoder::new(buffered, 3)?);
         self.hour = hour;
@@ -228,11 +245,23 @@ async fn main() -> Result<()> {
         Some(Instant::now() + Duration::from_secs(minutes * 60))
     };
 
-    let mut writer = Writer::new(PathBuf::from(out))?;
-    let mut last_slot = 0u64;
+    let out_path = PathBuf::from(out);
+    let mut writer = Writer::new(out_path.clone())?;
+    let checkpoint = out_path.join("checkpoint");
+    let mut last_slot = read_checkpoint(&checkpoint).unwrap_or(0);
 
     loop {
-        match run_session(&url, token.clone(), &mut writer, deadline, &mut last_slot).await {
+        let result = run_session(
+            &url,
+            token.clone(),
+            &mut writer,
+            deadline,
+            &mut last_slot,
+            &checkpoint,
+        )
+        .await;
+        write_checkpoint(&checkpoint, last_slot)?;
+        match result {
             Ok(true) => break,
             Ok(false) => eprintln!("stream ended; reconnecting"),
             Err(error) => eprintln!("session error: {error:#}; reconnecting"),
@@ -243,11 +272,23 @@ async fn main() -> Result<()> {
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 
+    write_checkpoint(&checkpoint, last_slot)?;
     writer.finish()?;
     eprintln!(
         "capture finished: {} lines, {} raw bytes",
         writer.lines, writer.raw_bytes
     );
+    Ok(())
+}
+
+fn read_checkpoint(path: &Path) -> Option<u64> {
+    fs::read_to_string(path).ok()?.trim().parse().ok()
+}
+
+fn write_checkpoint(path: &Path, slot: u64) -> Result<()> {
+    let tmp = path.with_extension("tmp");
+    fs::write(&tmp, format!("{slot}\n")).with_context(|| format!("write {}", tmp.display()))?;
+    fs::rename(&tmp, path).with_context(|| format!("rename {}", path.display()))?;
     Ok(())
 }
 
@@ -257,6 +298,7 @@ async fn run_session(
     writer: &mut Writer,
     deadline: Option<Instant>,
     last_slot: &mut u64,
+    checkpoint: &Path,
 ) -> Result<bool> {
     let mut client = GeyserGrpcBuilder::from_shared(url.to_string())?
         .x_token(token)?
@@ -288,16 +330,29 @@ async fn run_session(
     let (_, mut stream) = client.subscribe_with_request(Some(request)).await?;
     let mut stats = Stats::default();
     let mut last_log = Instant::now();
+    let mut last_checkpoint = Instant::now();
+    let mut shutdown = Box::pin(tokio::signal::ctrl_c());
 
     loop {
         tokio::select! {
+            _ = &mut shutdown => {
+                writer.flush()?;
+                write_checkpoint(checkpoint, *last_slot)?;
+                log_stats(&stats, writer);
+                return Ok(true);
+            }
             _ = tokio::time::sleep(Duration::from_millis(250)) => {
                 if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
                     writer.flush()?;
+                    write_checkpoint(checkpoint, *last_slot)?;
                     log_stats(&stats, writer);
                     return Ok(true);
                 }
                 writer.flush()?;
+                if last_checkpoint.elapsed() >= Duration::from_secs(5) {
+                    write_checkpoint(checkpoint, *last_slot)?;
+                    last_checkpoint = Instant::now();
+                }
                 if last_log.elapsed() >= Duration::from_secs(10) {
                     log_stats(&stats, writer);
                     last_log = Instant::now();
@@ -971,5 +1026,18 @@ mod tests {
         assert_eq!(pick_mint(WSOL_MINT, "token"), "token");
         assert_eq!(pick_mint("token", WSOL_MINT), "token");
         assert_eq!(pick_mint("token", "other"), "token");
+    }
+
+    #[test]
+    fn checkpoint_round_trips() {
+        let path = std::env::temp_dir().join(format!(
+            "sprout-checkpoint-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        write_checkpoint(&path, 123_456).unwrap();
+        assert_eq!(read_checkpoint(&path), Some(123_456));
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("tmp"));
     }
 }

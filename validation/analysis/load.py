@@ -3,11 +3,12 @@
 
 Idempotent: files already ingested at the same size/mtime are skipped, and
 event keys are de-duplicated with INSERT OR IGNORE. Files still being written
-by the capture process are skipped unless --include-active is passed.
+by the capture process are skipped unless --include-active is passed. A
+truncated/corrupt zstd stream is loaded up to the error but not marked
+ingested, so the next run retries it.
 """
 
 import argparse
-import io
 import json
 import sys
 import time
@@ -85,38 +86,64 @@ def insert_batch(con: duckdb.DuckDBPyConnection, table: str, rows: list[dict], c
     rows.clear()
 
 
-def ingest_file(con: duckdb.DuckDBPyConnection, path: Path) -> dict[str, int]:
+def ingest_file(
+    con: duckdb.DuckDBPyConnection, path: Path
+) -> tuple[dict[str, int], bool]:
     counts = {"launch": 0, "trade": 0, "migration": 0, "block": 0, "bad": 0}
     batches = {kind: [] for kind in COLUMNS}
+    complete = True
 
-    with open(path, "rb") as handle:
-        reader = zstd.ZstdDecompressor().stream_reader(handle)
-        text = io.TextIOWrapper(reader, encoding="utf-8", errors="replace")
+    def handle_line(raw: bytes) -> None:
+        line = raw.decode("utf-8", errors="replace").strip()
+        if not line:
+            return
         try:
-            for line in text:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    counts["bad"] += 1
-                    continue
-                kind = event.get("kind")
-                if kind not in COLUMNS:
-                    counts["bad"] += 1
-                    continue
-                columns = COLUMNS[kind]
-                batches[kind].append({column: event.get(column) for column in columns})
-                counts[kind] += 1
-                if len(batches[kind]) >= BATCH_SIZE:
-                    insert_batch(con, TABLE_FOR_KIND[kind], batches[kind], columns)
-        except (zstd.ZstdError, UnicodeDecodeError) as error:
-            print(f"  warning: truncated/corrupt stream in {path.name}: {error}", file=sys.stderr)
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            counts["bad"] += 1
+            return
+        kind = event.get("kind")
+        if kind not in COLUMNS:
+            counts["bad"] += 1
+            return
+        columns = COLUMNS[kind]
+        batches[kind].append({column: event.get(column) for column in columns})
+        counts[kind] += 1
+        if len(batches[kind]) >= BATCH_SIZE:
+            insert_batch(con, TABLE_FOR_KIND[kind], batches[kind], columns)
+
+    decoder = zstd.ZstdDecompressor().decompressobj()
+    buffer = b""
+    with open(path, "rb") as handle:
+        while True:
+            chunk = handle.read(1 << 20)
+            if not chunk:
+                break
+            try:
+                buffer += decoder.decompress(chunk)
+            except zstd.ZstdError as error:
+                complete = False
+                print(
+                    f"  warning: corrupt zstd stream in {path.name}: {error}",
+                    file=sys.stderr,
+                )
+                break
+            while b"\n" in buffer:
+                raw, buffer = buffer.split(b"\n", 1)
+                handle_line(raw)
+
+    if buffer.strip():
+        handle_line(buffer)
+    if complete and not decoder.eof:
+        complete = False
+        print(
+            f"  warning: truncated zstd frame in {path.name}; not marking complete",
+            file=sys.stderr,
+        )
 
     for kind, rows in batches.items():
         insert_batch(con, TABLE_FOR_KIND[kind], rows, COLUMNS[kind])
-    return counts
+    return counts, complete
 
 
 def main() -> int:
@@ -152,6 +179,7 @@ def main() -> int:
     now = time.time()
     ingested = 0
     skipped = 0
+    partial = 0
     totals = {"launch": 0, "trade": 0, "migration": 0, "block": 0, "bad": 0}
 
     for path in files:
@@ -167,17 +195,25 @@ def main() -> int:
             continue
 
         print(f"loading {path.name} ({stat.st_size / 1_000_000:.1f} MB)")
-        counts = ingest_file(con, path)
-        con.execute(
-            "INSERT OR REPLACE INTO ingested_files VALUES (?, ?, ?, now())",
-            [str(path), stat.st_size, stat.st_mtime],
-        )
+        counts, complete = ingest_file(con, path)
+        if complete:
+            con.execute(
+                "INSERT OR REPLACE INTO ingested_files VALUES (?, ?, ?, now())",
+                [str(path), stat.st_size, stat.st_mtime],
+            )
+        else:
+            partial += 1
+            print(
+                f"  warning: {path.name} is incomplete; not marked ingested "
+                "and will be retried",
+                file=sys.stderr,
+            )
         for key, value in counts.items():
             totals[key] += value
         ingested += 1
 
     print(
-        f"ingested {ingested} files, skipped {skipped}: "
+        f"ingested {ingested} files, skipped {skipped}, partial {partial}: "
         f"launches={totals['launch']} trades={totals['trade']} "
         f"migrations={totals['migration']} blocks={totals['block']} bad={totals['bad']}"
     )
