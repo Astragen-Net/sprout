@@ -8,7 +8,8 @@ MEV, failed transactions, capital constraints, or post-migration AMM liquidity.
 
 The published capture was made with the pre-fix decoder; see KNOWN_ISSUES.md.
 The signal features are therefore provisional. Entry and exit prices come from
-post-T+60s trades, which are not affected by the first-buy bug.
+post-T+60s trades rather than the T+60s snapshot, so they are less exposed to
+the first-buy bug but not immune. A first buy after T+60s can still be affected.
 """
 
 import argparse

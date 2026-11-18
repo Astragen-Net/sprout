@@ -57,7 +57,7 @@ Fresh window 2026-11-15 00:00 to 22:08; 23,709 fresh uncensored launches; 11,721
 - Secondary: expanded 0.607, repeat-≥2 0.618, creator history 0.601; bundle negative control 0.448 (inverted).
 - The interim pass (0.653 AUC, 1.31× precision) did not hold on the full window.
 
-The signal is weak-to-moderate and broad: the high cohort covers 71% of known-creator launches, and its rug rate is only 26% above base. It is not a standalone product.
+The signal is weak-to-moderate and broad: the high cohort covers about 70% of the primary known-creator cohort, and its rug rate is only 26% above base. It is not a standalone product.
 
 **Data-quality caveat (2026-11-17):** the capture predates the first-buy decoder fix; ~24,914 launches have a first buy recorded as the curve remainder. Excluding the provably corrupt launches leaves the v2 AUC at ~0.646, below the bar, so the failure is robust; but the effect sizes are provisional. The 24h cohort also excludes 27,950 dead launches (no post-T+60s trade). See [`../../KNOWN_ISSUES.md`](../../KNOWN_ISSUES.md).
 

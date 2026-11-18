@@ -47,7 +47,7 @@ The full 24 h result is consistent with the 12 h interim; the n=203 row was an e
 | Precision multiple | 1.26× |
 | Pre-registered bar | AUC ≥ 0.65, CI low > 0.55, lift ≥ 1.5×, precision ≥ 1.3×, n ≥ 200 → **FAIL** |
 
-The signal replicates directionally but is broad: 71% of known-creator launches fall in the high cohort, and its rug rate is only 26% above base. The interim pass (0.653 / 1.31×) did not hold on the full window.
+The signal replicates directionally but is broad: about 70% of the primary known-creator cohort falls in the high cohort, and its rug rate is only 26% above base. The interim pass (0.653 / 1.31×) did not hold on the full window.
 
 ### 3. Creator dev-buy / launch-and-dump — inverted at 24h
 
